@@ -1,0 +1,59 @@
+---
+title: "데이터 살펴보기"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+```
+
+# 기본 함수
+```{r}
+#데이터 전반에 대한 내용
+str(pima)
+```
+```{r}
+#데이터 요약
+summary(pima)
+```
+
+# dlookr 패키지
+```{r, results='hide'}
+library(dlookr)
+```
+
+```{r}
+#unique rate가 높은 칼럼의 경우, 해당 칼럼을 자세히 살펴본 후 ID를 나타내는 경우라면 모델링 전에 제거할 것
+diagnose(pima) 
+```
+
+# skimr 패키지
+```{r, results='hide'}
+library(skimr)
+```
+```{r}
+skim(pima)
+```
+
+
