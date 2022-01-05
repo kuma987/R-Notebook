@@ -1,0 +1,94 @@
+---
+title: "차원축소"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+#결측치 제거
+pima <- pima[complete.cases(pima),]
+```
+
+```{r, results='hide'}
+library(dplyr)
+library(caret)
+pima_num <- select_if(pima, is.numeric)
+pima_class <- select_if(pima, is.factor)
+```
+
+
+# 주성분 분석 (PCA)
+변수들의 선형결합으로 주성분 생성
+
+## 1. 상관계수가 높은 변수만 적용
+해당 데이터의 경우, 상관계수가 높은 변수가 적기 때문에 예시로 적절하지는 않음
+```{r}
+cor_mtrx <- cor(pima_num, method='pearson')
+high_idx <- findCorrelation(cor_mtrx, cutoff=0.65) #보통은 0.7이상을 강한 상관관계가 있다고 판단
+pima_high <- pima_num[,high_idx]
+pca <- prcomp(pima_high, center=T, scale=T)
+summary(pca) #누적기여율 85% 이상이 되는 주성분 수로 결정
+pca #주성분이 원변수를 어떻게 표현하고 있는지 해석
+biplot(pca,col=c('red','blue')) #해당 그림을 통해 이상치를 제거하기도 함
+new_pima <- cbind(pima_num[,-high_idx],pca$x[,1:2], pima_class)
+```
+
+## 2. 전체 변수에 적용
+```{r}
+pca <- prcomp(pima_num, center=T, scale=T)
+summary(pca) #누적기여율 85% 이상이 되는 주성분 수로 결정
+pca #주성분이 원변수를 어떻게 표현하고 있는지 해석
+biplot(pca,col=c('red','blue')) #해당 그림을 통해 이상치를 제거하기도 함
+new_pima <- cbind(pca$x[,1:5], pima_class)
+```
+
+# 요인 분석 (FA)
+변수들의 공통요인과 고유한 요인을 이용해 선형결합으로 표현
+
+PCA를 수행해도 일부 원변수가 선형결합 이후에도 둘 이상의 주성분에서 동일하게 등장할 시, 더 명확성을 기르기 위해 추가적으로 요인 분석 수행
+
+직교회전 : 요인 간 직각구조(독립성) 유지. varimax, quartimax 등
+
+사각회전 : 직각구조를 어느 정도 포기하는 대신 변수 간 집단화가 더욱 잘 이루어짐. oblimin 등
+
+해당 문서에서는 간단하게 요인 분석 하는 방식만 정리.
+
+나중에 직접 수행할 때 요인 분석 개념을 더 자세히 살펴보고, 파라미터를 어떻게 설정할 지 고민하기
+
+```{r, results='hide'}
+library(psych)
+```
+
+```{r}
+#적절한 요인 수 결정
+test <- principal(pima_num, rotate='varimax', scores=T, method='regression')
+plot(test$values, type='b')
+abline(h=1,lty=2,col='red') #values의 값이 1 이상이면서 최소인 경우가 적절한 요인의 수
+model <- principal(pima_num, nfactors=3, rotate='varimax', scores=T, method='regression')
+biplot(model)
+model$loadings #요인이 원변수를 어떻게 표현하고 있는지 해석
+new_pima <- cbind(model$scores, pima_class)
+```
+
+
