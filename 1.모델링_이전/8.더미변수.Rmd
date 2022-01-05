@@ -1,0 +1,47 @@
+---
+title: "더미변수"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+#결측치 제거
+pima <- pima[complete.cases(pima),]
+pima_dummy <- pima
+```
+
+# 더미변수 생성
+```{r, results='hide'}
+library(nnet)
+```
+
+```{r}
+diabetes_dummy <- class.ind(pima_dummy$diabetes)
+colnames(diabetes_dummy) <- paste0('diabetes_',colnames(diabetes_dummy))
+pima_dummy <- pima_dummy[,!names(pima_dummy) %in% 'diabetes']
+pima_dummy <- cbind(pima_dummy, diabetes_dummy)
+head(pima_dummy,10)
+```
+
+
