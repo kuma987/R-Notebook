@@ -1,0 +1,122 @@
+---
+title: "그외"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+```
+
+```{r, results='hide'}
+library(caret)
+```
+
+```{r}
+idx_tr <- createDataPartition(pima$mass, p=0.7, list=F, times=1)
+train <- pima[idx_tr,]
+test <- pima[-idx_tr,]
+```
+
+
+# SVM
+
+```{r, results='hide'}
+library(caret)
+library(ModelMetrics)
+```
+
+
+### 모델링
+```{r}
+svm_model <- train(
+  form = mass~.,
+  data = train,
+  trControl = trainControl(method='none', classProb=F),
+  method='svmLinear',
+  preProcess = c('center','scale')
+)
+```
+
+### 모델 평가
+```{r}
+svm_pred <- predict(svm_model, test) #모델 자체에 scale이 되어서 test를 굳이 scaling 할 필요가 없음
+rmse(test$mass, svm_pred)
+mse(test$mass, svm_pred)
+mae(test$mass, svm_pred)
+```
+
+
+
+# 랜덤 포레스트
+## randomForest 패키지
+```{r, results='hide'}
+library(randomForest)
+library(ModelMetrics)
+```
+
+### 모델링
+```{r}
+rf_model <- randomForest(mass~., train, ntree = 100, proximity = T, importance = T)
+importance(rf_model) #정확도와 불순도 개선 정도. 모두 높은 변수가 중요 변수
+varImpPlot(rf_model) #위 결과를 시각화 (오름차순 정렬로 인해 더 보기 쉬움)
+```
+
+
+### 모델 평가
+```{r}
+rf_pred <- predict(rf_model, test)
+rmse(test$mass, rf_pred)
+mse(test$mass, rf_pred)
+mae(test$mass, rf_pred)
+```
+
+
+## caret 패키지
+```{r, results='hide'}
+library(caret)
+library(ModelMetrics)
+```
+
+### 모델링
+```{r}
+rf_model2 <- train(
+  form = mass~.,
+  data = train,
+  trControl = trainControl(method='none', classProb = F),
+  method='rf',
+  preProcess = c('center','scale')
+)
+```
+
+### 모델 평가
+```{r}
+rf_pred2 <- predict(rf_model2, test)
+rmse(test$mass, rf_pred2)
+mse(test$mass, rf_pred2)
+mae(test$mass, rf_pred2)
+```
+
+
