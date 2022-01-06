@@ -1,0 +1,142 @@
+---
+title: "계층적 군집분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(dplyr)
+```
+
+```{r}
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+num_pima <- select_if(pima, is.numeric)
+class_pima <- select_if(pima,is.factor)
+scale_pima <- apply(num_pima,2,scale)
+```
+
+# 응집분석법
+
+## 거리 계산
+```{r}
+d <- dist(scale_pima, method = 'euclidean')
+# method : euclidean, maximum, manhattan, canberra, binary, minkowski 등 다양
+```
+
+## 모델링
+```{r}
+#최단연결법
+single <- hclust(d, method = 'single') 
+#최장연결법
+complete <- hclust(d, method = 'complete')
+#중심연결법
+centroid <- hclust(d, method = 'centroid')
+#평균연결법
+average <- hclust(d, method = 'average')
+#와드연결법 : 오차제곱합 최소. 정보 손실 최소화
+ward <- hclust(d, method = 'ward.D2')
+```
+
+## 시각화
+```{r}
+plot(ward)
+groups <- cutree(ward, k=3)
+rect.hclust(ward, k=3)
+```
+
+
+## 데이터 결합
+```{r}
+pima_clust <- cbind(num_pima, class_pima, cluster = as.factor(groups))
+head(pima_clust)
+str(pima_clust)
+```
+
+
+
+
+# 분할분석법
+```{r, results='hide'}
+library(cluster)
+```
+
+## 모델링
+```{r}
+model <- diana(num_pima, metric = 'euclidean', stand = T)
+#metric : 거리계산 방법. euclidean or manhattan
+#stand : 표준화 수행 여부
+```
+
+
+## 시각화
+```{r}
+plot(model, which=2)
+groups <- cutree(model, k=3)
+rect.hclust(model, k=3)
+```
+
+
+## 데이터 결합
+```{r}
+pima_clust <- cbind(num_pima, class_pima, cluster = as.factor(groups))
+head(pima_clust)
+str(pima_clust)
+```
+
+# 군집별 시각화
+어떤 군집분석 방법을 사용하더라도 동일한 결과라 별도의 단락으로 빼서 한 번만 적음
+```{r, results='hide'}
+library(ggplot2)
+#pima_clust : 원본 + 클러스터링 결과
+```
+
+## 1. 그룹별 연속형 변수 히스토그램
+```{r}
+#fill 구문 안해도 상관 없음
+ggplot(pima_clust, aes(x=pregnant, fill=cluster)) + geom_histogram() + facet_grid(cluster~.)
+```
+
+## 2. 그룹별 연속형 변수 박스플롯
+```{r}
+ggplot(pima_clust, aes(x=cluster, y=pregnant)) + geom_boxplot()
+```
+
+## 3. 그룹별 연속형 변수 밀도도표
+```{r}
+ggplot(pima_clust, aes(x=pregnant, fill=cluster)) + geom_density(alpha=0.5)
+
+```
+
+## 4. 그룹별 산점도
+```{r}
+ggplot(pima_clust, aes(x=pregnant, y=glucose, col=cluster)) + geom_point() #shpae 구문 안해도 됨
+```
+
+## 5. 막대도표
+```{r}
+# 범주형 변수에 적용한 모습 (연속형 변수도 가능하지만, 별로임...)
+#'fill' : 쌓기 비율 / 'dodge' : 각자 두기
+ggplot(pima_clust, aes(x=diabetes, fill=cluster)) + geom_bar(position = 'identity') 
+```
+

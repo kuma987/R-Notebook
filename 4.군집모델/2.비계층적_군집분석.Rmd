@@ -1,0 +1,215 @@
+---
+title: "비계층적 군집분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(dplyr)
+library(factoextra)
+library(cluster)
+```
+
+```{r}
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+num_pima <- select_if(pima, is.numeric)
+class_pima <- select_if(pima,is.factor)
+scale_pima <- apply(num_pima,2,scale)
+```
+
+# K-Means
+## 최적의 군집 수 K  찾기
+```{r}
+#엘보우 기법
+fviz_nbclust(scale_pima, kmeans, method = "wss", k.max = 24) + theme_minimal() + ggtitle("the Elbow Method")
+#실루엣 계수
+fviz_nbclust(scale_pima, kmeans, method = "silhouette", k.max = 24) + theme_minimal() + ggtitle('Silhouette')
+```
+
+
+## 모델링
+```{r}
+model <- kmeans(scale_pima, centers=4, nstart=20)
+model$size #군집 별 개체 수
+model$centers #군집 중심 위치
+model$cluster #개체들의 군집
+```
+
+
+
+## 데이터 결합
+```{r}
+pima_clust <- cbind(num_pima, class_pima, cluster = model$cluster)
+pima_clust$cluster <- factor(pima_clust$cluster)
+head(pima_clust)
+```
+
+
+## 번외
+```{r}
+# PCA 시각화
+fviz_cluster(model, scale_pima, frame=F, geom='point',frame.type='norm')
+
+# 실루엣 계수
+d <- dist(scale_pima, method='euclidean')
+sil <- silhouette(model$cluster, d)
+mean(sil[,3]) #모델 실루엣 계수
+plot(sil) #R Studio에서 Zoom 하면 보임
+```
+
+
+
+
+# K-Medoids
+K-Means에서 평균 대신 중간점 이용. 이상값에 덜 민감
+## 최적의 군집 수 K  찾기
+```{r}
+#엘보우 기법
+fviz_nbclust(scale_pima, pam, method = "wss", k.max = 24) + theme_minimal() + ggtitle("the Elbow Method")
+#실루엣 계수
+fviz_nbclust(scale_pima, pam, method = "silhouette", k.max = 24) + theme_minimal() + ggtitle('Silhouette')
+```
+
+
+## 모델링
+```{r}
+model <- pam(scale_pima, k=5)
+model$id.med #군집 별 개체 수
+model$medoids #군집 중심 위치
+model$clustering #개체들의 군집
+```
+
+
+## 데이터 결합
+```{r}
+pima_clust <- cbind(num_pima, class_pima, cluster = model$clustering)
+pima_clust$cluster <- factor(pima_clust$cluster)
+head(pima_clust)
+```
+
+## 번외
+```{r}
+# PCA 시각화
+fviz_cluster(model, scale_pima, frame=F, geom='point', frame.type='norm')
+# 실루엣 계수
+d <- dist(scale_pima, method='euclidean')
+sil <- silhouette(model$clustering, d)
+mean(sil[,3]) #모델 실루엣 계수
+plot(sil) #R Studio에서 Zoom 하면 보임
+```
+
+
+# 가우시안 혼합 군집 (GMM)
+```{r, results='hide'}
+library(ClusterR)
+```
+전체 데이터의 확률분포가 여러 개의 가우시안 분포의 조합으로 이루어져 있다고 가정
+
+각각의 분포에 속할 확률이 높은 데이터끼리 클러스터링하는 방식
+
+사실 비계층적 군집분석인지 불확실하긴 한데, 따로 혼합 분포 군집 문서를 작성하지 않을 예정이기 때문에 여기에 작성
+
+## 최적의 군집 수
+급감하는 지역 (AIC와 BIC 모두에서 벌점이 금감하는 지점)
+```{r}
+#AIC
+opt_gmm_AIC <- Optimal_Clusters_GMM(scale_pima, max_clusters = 10, criterion = "AIC", 
+                                    dist_mode = "eucl_dist", seed_mode = "random_subset",
+                                    km_iter = 10, em_iter = 10, var_floor = 1e-10, 
+                                    plot_data = T)
+#BIC
+opt_gmm_BIC <- Optimal_Clusters_GMM(scale_pima, max_clusters = 10, criterion = "BIC", 
+                                    dist_mode = "eucl_dist", seed_mode = "random_subset",
+                                    km_iter = 10, em_iter = 10, var_floor = 1e-10, 
+                                    plot_data = T)
+```
+
+
+
+## 모델링
+```{r}
+pred_model <- GMM(scale_pima, 4, dist_mode='eucl_dist',seed_mode='random_subset', km_iter=10, em_iter=10, verbose = F)
+model <- predict_GMM(scale_pima, pred_model$centroids, pred_model$covariance_matrices, pred_model$weights)
+table(model$cluster_labels) #군집별 개체 수
+model$cluster_labels #개체들의 군집
+```
+
+
+## 데이터 결합
+```{r}
+pima_clust <- cbind(num_pima, class_pima, cluster = model$cluster_labels)
+pima_clust$cluster <- factor(pima_clust$cluster)
+head(pima_clust)
+```
+
+## 번외
+```{r}
+# PCA 시각화
+pca <- prcomp(scale_pima,center=T,scale=T)
+summary(pca)
+new_df_gmm <- cbind(pima_clust,pca$x[,c(1,2)])
+ggplot(new_df_gmm) + geom_point(aes(x=PC1,y=PC2, col=cluster, pch=cluster)) + ggtitle('Clusterp plot') + labs(x= "Dim1", y= "Dim2")
+# 실루엣 계수
+d <- dist(scale_pima, method='euclidean')
+sil <- silhouette(model$cluster_labels, d)
+mean(sil[,3]) #모델 실루엣 계수
+plot(sil) #R Studio에서 Zoom 하면 보임
+```
+
+# 군집별 시각화
+어떤 군집분석 방법을 사용하더라도 동일한 결과라 별도의 단락으로 빼서 한 번만 적음
+```{r, results='hide'}
+library(ggplot2)
+#pima_clust : 원본 + 클러스터링 결과
+```
+
+## 1. 그룹별 연속형 변수 히스토그램
+```{r}
+#fill 구문 안해도 상관 없음
+ggplot(pima_clust, aes(x=pregnant, fill=cluster)) + geom_histogram() + facet_grid(cluster~.)
+```
+
+## 2. 그룹별 연속형 변수 박스플롯
+```{r}
+ggplot(pima_clust, aes(x=cluster, y=pregnant)) + geom_boxplot()
+```
+
+## 3. 그룹별 연속형 변수 밀도도표
+```{r}
+ggplot(pima_clust, aes(x=pregnant, fill=cluster)) + geom_density(alpha=0.5)
+
+```
+
+## 4. 그룹별 산점도
+```{r}
+ggplot(pima_clust, aes(x=pregnant, y=glucose, col=cluster)) + geom_point() #shpae 구문 안해도 됨
+```
+
+## 5. 막대도표
+```{r}
+# 범주형 변수에 적용한 모습 (연속형 변수도 가능하지만, 별로임...)
+#'fill' : 쌓기 비율 / 'dodge' : 각자 두기
+ggplot(pima_clust, aes(x=diabetes, fill=cluster)) + geom_bar(position = 'identity') 
+```
+
