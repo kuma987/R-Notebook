@@ -1,0 +1,366 @@
+---
+title: "선형회귀"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 선형회귀
+
+## 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+```
+
+## 데이터 분할
+```{r, results='hide'}
+library(caret)
+```
+
+
+```{r}
+idx_tr <- createDataPartition(pima$mass, p=0.7, list=F, times=1)
+train <- pima[idx_tr,]
+test <- pima[-idx_tr,]
+```
+
+## 모델링
+```{r}
+#모델링은 보통 변수선택법을 활용해서 변수 선택
+model1 <- step(lm(mass~., train), direction='both')
+summary(model1)
+#결정계수로 '적합성 검정' : 식이 y 값을 설명해주는 정도
+#F-통계량, p-value로 '유의성 검정' : 모델 자체의 타당성
+#각 회귀 계수들의 standard error (표준오차)
+# : 잔차(실제값-예측값)의 표준편차
+# : 모델이 회귀계수를 정확히 추정하는지 알려주는 지표
+# : 낮을수록 정확하게 추정했다는 의미 (0.05보다 높을 경우 제거한 후 다시 모델링)
+```
+
+```{r}
+model2 <- lm(mass~pregnant+pressure+triceps+diabetes, train)
+summary(model2)
+```
+
+
+## 다중공선성 확인
+```{r, results='hide'}
+library(car)
+```
+
+
+```{r}
+vif(model2) #10보다 큰 변수 있으면 확인 후 제거
+```
+
+
+## plot(model)
+### 1.Residuals vs Fitted 
+```{r}
+# 0인 직선이 되는 것이 이상적
+plot(model2, which = 1)
+```
+
+### 2.잔차 Q-Q Plot
+```{r}
+# 대각선이 바람직
+plot(model2, which = 2)
+```
+
+### 3
+```{r}
+# 위 1에서 잔차를 표준화한 것
+plot(model2, which = 3)
+```
+
+### 4.Cook's distance
+```{r}
+# 회귀 직선 모양에 크게 영향을 끼치는 이상치 찾기
+# 라벨링 표시된 점을 이상치로 고르기도 하고, 아래 코드를 입력해서 선을 넘는 관측치들을 이상치로 판단하기도 함
+# cutoff <- 4/(NROW(train)-length(coef(model2))-1)
+# abline(h = cutoff, lty = 2, col = 'red')
+plot(model2, which = 4)
+```
+
+### 5.Residuals vs Leverage
+```{r}
+# 레버리지(독립변수가 얼마나 극단에 치우쳐 있는지 알려주는 지표)
+plot(model2, which = 5)
+```
+
+### 6.Cook's distance vs Leverage
+```{r}
+# 둘은 비례관계
+plot(model2, which = 6)
+```
+
+
+
+## 잔차분석 : 선형모델의 기존 가정 검증
+### 1. 정규성
+```{r}
+# 영향점에 라벨링 생김
+# 영향점 살펴보기
+qqPlot(model2, labels=rownames(train), id.method='identify', simulate=T, main='Q-Q Plot')
+```
+
+
+### 2. 독립성
+```{r}
+#p-value가 크다 -> 자기 상관이 없다 -> 독립성 만족
+durbinWatsonTest(model2) 
+```
+
+### 3. 선형성
+```{r}
+#선 따라가면 선형성 만족
+crPlots(model2)
+```
+
+
+### 4. 등분산성
+```{r}
+ncvTest(model2) #p-value가 크다 -> 등분산 만족
+spreadLevelPlot(model2) #수평 이동 = 등분산 만족
+# Suggested power transformation 값은 일정하지 않은 오차의 분산을 안정화시키기 위해 예측값에 취해야 할 제곱 값을 의미
+# 개인적으로 R 그림은 수평이다 뭐다 말하기 어려운 경우가 많아서, ncvTest만 이용하자
+```
+
+
+## 최종 모델 결정
+```{r}
+final_model <- model2
+summary(final_model) #모델 요약
+coef(final_model) # 회귀 계수
+head(fitted(final_model)) # 예측값
+head(residuals(final_model)) # 잔차 
+confint(final_model) #각 회귀계수의 신뢰구간
+deviance(final_model) #잔차 제곱합
+```
+
+
+## 회귀모델 평가
+```{r}
+lm_pred <- predict(final_model, test)
+```
+
+
+```{r, results='hide'}
+library(ModelMetrics)
+```
+
+```{r}
+# ModelMetrics가 이상없이 작동한다면
+rmse(test$mass, lm_pred)
+mse(test$mass, lm_pred)
+mae(test$mass, lm_pred)
+```
+
+```{r}
+# ModelMetrics가 작동하지 않는다면
+sum1 = 0
+for (i in 1:NROW(lm_pred)){
+  sum1 = sum1 + (lm_pred[i]-test$mass[i])^2
+}
+rmse = sqrt(sum1/NROW(lm_pred))
+mse = sum1/NROW(lm_pred)
+rmse
+mse
+
+sum2 = 0
+for (i in 1:NROW(lm_pred)){
+  sum2 = sum2 + abs(lm_pred[i]-test$mass[i])
+}
+mae = sum2/NROW(lm_pred)
+mae
+```
+
+# 정규화 선형회귀
+```{r, results='hide'}
+library(glmnet)
+```
+
+## 사용 데이터
+```{r}
+library(mlbench)
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+```
+
+## 데이터 분할
+```{r, results='hide'}
+library(caret)
+```
+
+
+```{r}
+idx_tr <- createDataPartition(pima$mass, p=0.7, list=F, times=1)
+train <- pima[idx_tr,]
+test <- pima[-idx_tr,]
+```
+
+
+## 모델링
+```{r}
+y <- train$mass
+x <- model.matrix(mass~.,train)[,-1]
+lambdas = seq(0, 0.3, 0.05) # 파라미터를 비교하기 위해 lambda 값을 0~0.3까지 0.05 간격으로 지정
+#라쏘 : alpha = 1 
+#릿지 : alpha = 0
+#엘라스틱넷 : alpha = 0.5
+lasso <- cv.glmnet(x,y, alpha = 1, lambda = lambdas, nfold=10)
+plot(lasso)
+opt_lambda <- lasso$lambda.min #교차검증 오차 평균이 최소가 되게 하는 lambda 값
+opt_lambda <- lasso$lambda.1se #분산이 가장 작게 하는 lambda 값
+```
+
+## 최종 모델 결정
+```{r}
+fin_lasso <- glmnet(x,y, alpha=1, lambda = opt_lambda)
+coef(fin_lasso)
+```
+
+## 모델 평가
+```{r}
+#예측
+lasso_pred <- predict(fin_lasso, s=opt_lambda, newx=model.matrix(mass~.,test)[,-1]) 
+#평가
+rmse(test$mass, lasso_pred)
+mse(test$mass, lasso_pred)
+mae(test$mass, lasso_pred)
+```
+
+# 교호작용
+간단한 회귀식에만 적용할 수 있는 예시
+
+복잡한 회귀식에서는 추후 조사 필요
+```{r, results='hide'}
+library(ggplot2)
+```
+
+## 사용 데이터
+```{r}
+data(mtcars)
+mtcars$am <- factor(mtcars$am)
+mtcars$cyl <- factor(mtcars$cyl)
+```
+
+## 1.연속형 변수 2개
+
+### 모델링
+```{r}
+clx <- lm(mpg~wt*hp, mtcars)
+coef(clx) 
+```
+wt:hp값이 NA가 나온다면 교호작용이 없는 경우
+
+mpg = 49.80842343 - 8.21662430\*wt - 0.12010209\*hp + 0.02783815\*wt\*hp
+
+```{r}
+anova(clx)
+# wt:hp의 p-value로 교호작용의 유의성 확인
+# p-value < 0.05 : 교호작용이 유의하다
+```
+
+```{r}
+summary(clx)
+# 기본적인 해석은 기존 lm모델과 동일
+# wt:hp가 변수로써 유의하다면, wt와 hp가 각각 변수로 유의하지 않더라도 회귀식에서 제외할 수 없다
+```
+
+### 시각화
+```{r}
+A <- c(mean(mtcars$wt)-sd(mtcars$wt), mean(mtcars$wt), mean(mtcars$wt)+sd(mtcars$wt))
+label <- as.character(round(A,2))
+inter <- coef(clx)[1] + coef(clx)[2]*A
+slp <- coef(clx)[3] + coef(clx)[4]*A
+color <- rainbow(length(A))
+df <- data.frame(A, inter, slp, color)
+```
+
+
+```{r}
+ggplot(data=mtcars, aes(x=hp, y=mpg)) +
+  geom_point() +
+  geom_abline(data = df, aes(intercept = inter, slope = slp, colour = color)) +
+  scale_colour_discrete(labels=label) +
+  labs(colour='wt')
+```
+
+## 2.연속형 변수 1개 범주형 변수 1개
+
+### 모델링
+```{r}
+#am은 0과 1의 값을 가지는 범주형 변수
+multi <- lm(mpg ~ wt*am, mtcars) 
+coef(multi)
+```
+wt:am1값이 NA가 나온다면 교호작용이 없는 경우
+
+am = 0 인 경우 : mpg = 31.416055 - 3.785908\*wt
+
+am = 1 인 경우 : mpg = (31.416055 + 14.878423) + (-3.785908 - 5.298360)\*wt
+
+```{r}
+anova(multi)
+# wt:am1의 p-value로 교호작용의 유의성 확인
+# p-value < 0.05 : 교호작용이 유의하다
+```
+
+```{r}
+summary(multi)
+# 기본적인 해석은 기존 lm모델과 동일
+# wt:am1가 변수로써 유의하다면, wt와 am가 각각 변수로 유의하지 않더라도 회귀식에서 제외할 수 없다
+```
+
+### 시각화
+```{r}
+inter = coef(multi)[1]
+wt_slp = coef(multi)[2]
+am1_inter = coef(multi)[3]
+am1_slp = coef(multi)[4]
+```
+
+```{r}
+ggplot(data=mtcars, aes(x=wt, y=mpg, colour=am)) +
+  geom_point() +
+  geom_abline(intercept = inter + am1_inter,
+              slope = wt_slp + am1_slp,
+              colour= 'blue', lty=2) +
+  geom_abline(intercept = inter,
+              slope = wt_slp,
+              colour = 'red', lty=2)
+```
+
+## 3.범주형 변수 2개
+범주들끼리는 교호작용을 별로 신경쓰지 않음
+
+차라리 독립성 검정을 수행하여 독립 여부를 확인 
+
+```{r}
+#귀무가설 : 두 변수가 독립이다
+result <- table(mtcars$am, mtcars$cyl)
+chisq.test(result, correct=F)
+```
+
