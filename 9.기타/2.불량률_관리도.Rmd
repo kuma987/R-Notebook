@@ -1,0 +1,48 @@
+---
+title: "연립방정식"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 불량률 관리도
+관리중심선 : 평균값  
+관리상한선 : 평균값 + 3\*표준편차  
+관리하한선 : 평균값 - 3\*표준편차  
+```{r}
+dat <- iris[,2]
+dat <- data.frame(1:150,iris[,2])
+colnames(dat) <- c('id','miss')
+head(dat)
+```
+```{r, results='hide'}
+library(ggplot2)
+```
+
+```{r}
+cl = mean(dat$miss)
+ucl = cl+sd(dat$miss)
+lcl = cl-sd(dat$miss)
+cl_dat = data.frame(c('ucl','cl','lcl'), c(ucl,cl,lcl))
+colnames(cl_dat) <- c('line','value')
+ggplot(dat) + geom_point(aes(x=id,y=miss)) +
+  geom_hline(yintercept=cl,col='black') +
+  geom_hline(yintercept=ucl,col='red',linetype='dashed') +
+  geom_hline(yintercept=lcl,col='blue',linetype='dashed')
+```

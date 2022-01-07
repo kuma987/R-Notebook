@@ -1,0 +1,85 @@
+---
+title: "연립방정식"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 연릭방정식 최적화 문제
+
+문제  
+원료 P와 Q는 각각 하루  최대 150, 100만큼 생산할 수 있고  
+제품 A를 생산하는데 3P+Q가 필요  
+제품 B를 생산하는데 P+2Q가 필요  
+제품 A와 B의 판매 수익은 각각 2000, 3000
+
+풀이  
+제품 A와 B의 개수를 각각 a, b로 명명  
+다음과 같은 식 생성  
+3a+b <= 150  
+a+2b <= 100  
+z = 2000\*a + 3000\*b
+
+## lpSolve 패키지
+```{r, results='hide'}
+library(lpSolve)
+```
+
+```{r}
+f = c(2000,3000) #목적함수의 계수
+A = matrix(c(3,1,
+             1,2), ncol=2, byrow=T) #제약조건 기술계수
+d = c('<=', '<=') #제약조건 방향
+r = c(150,100) #자원의 제약조건
+result_lp <- lp('max',f,A,d,r) #목적함수에 따라 min, max
+result_lp$solution #최적해
+result_lp$objval #최적해에 따른 목적함수 값
+```
+
+
+## 반복문
+```{r}
+lst = list()
+vec = c()
+i = 0
+for (a in 0:50){ # b=0이라 가정했을 때 a의 범위
+  for (b in 0:100){ # a=0이라 가정했을 때 b의 범위
+    if (3*a+b <= 150) { # 제약조건1
+      if (a+2*b <= 100) { # 제약조건2
+        z = 2000*a + 3000*b
+        k= c(a,b,z)
+        i = i+1
+        vec[i] = z
+        lst[[i]] = k
+      }
+    }
+  }
+}
+lst[[which(vec == max(vec))]] #최적해 + 목적함수
+```
+
+## 연립방정식
+3a+b = 150  
+a+b + 100
+```{r}
+A <- matrix(c(3,1,
+              1,1),ncol=2,byrow=T)
+b <- matrix(c(150,100), ncol=1)
+solve(A,b)
+```
