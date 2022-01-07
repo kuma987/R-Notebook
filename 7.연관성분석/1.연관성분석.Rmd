@@ -1,0 +1,125 @@
+---
+title: "연관성분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, results='hide'}
+library(arules)
+library(arulesViz)
+```
+
+# 트랜잭션 데이터 만들기
+```{r}
+# 행렬 생성
+mx_ex <- matrix(
+  c(1,1,1,1,0,
+    1,1,0,1,0,
+    1,0,0,1,0,
+    1,1,1,0,0,
+    1,1,1,0,0),ncol=5, byrow=T)
+rownames(mx_ex) <- c('p1','p2','p3','p4','p5')
+colnames(mx_ex) <- c('a','b','c','d','e')
+# 트랜잭션 클래스로 변환
+trx_ex <- as(mx_ex, 'transactions')
+trx_ex
+summary(trx_ex)
+inspect(trx_ex)
+```
+# 연관성 분석을 위한 데이터 변형 예시
+
+## 데이터 원본
+```{r}
+lotto <- read.csv('/Users/JGH/Desktop/github/R-Notebook/data/lotto.csv')
+head(lotto)
+```
+## 데이터 변형
+```{r, results='hide'}
+library(dplyr)
+```
+
+```{r}
+lotto <- lotto %>% arrange(time_id)
+rownames(lotto) <- lotto[,1]
+lotto <- lotto[,-1]
+head(lotto)
+```
+
+```{r}
+item <- unique(as.vector(unlist(lotto)))
+item <- sort(item)
+
+df <- data.frame(matrix(ncol = NROW(item), nrow = NROW(lotto)))
+colnames(df) <- item
+for (i in 1:NROW(lotto)) {
+  for (j in 1:NROW(item)) {
+    df[i,j] <- ifelse(j %in% unname(unlist(lotto[i,])), T, F)
+  }
+}
+head(df)
+```
+
+## transcation 형태
+```{r}
+trx <- as(df, 'transactions')
+inspect(trx[1:3])
+```
+
+
+
+# 연관성 분석 수행
+
+## 데이터 불러오기
+```{r}
+data(Groceries)
+summary(Groceries) #이미 트랜잭션 형태
+```
+
+## 데이터 살펴보기
+```{r}
+inspect(Groceries[1:3]) # 거래내역 3개 보기
+sort(itemFrequency(Groceries),decreasing=T)[1:10] # 지지도 높은 순으로 상위 10개 품목 확인
+itemFrequencyPlot(Groceries,support=0.05, topN=10) # 최소 지지도가 0.05이상인 품목 상위 10개 시각화
+image(Groceries[1:10]) # 거래 내역을 희소 매트릭스로 시각화
+```
+
+
+## 연관 규칙 생성
+```{r}
+# 지지도가 0.01 이상인 품목에 대해서, 신뢰도가 0.3 이상이며, 최소 품목 수가 2 이상인 규칙만 생성
+apr <- apriori(Groceries,
+               parameter = list(support=0.01, confidence=0.3, minlen=2))
+# 궁금하지 않은 항목은 apriori 내에서 인자 appearance=list(none='품목명')을 통해 제거
+```
+
+## 연관 규칙 살펴보기
+```{r}
+# inspect를 통한 연관규칙 탐색
+inspect(sort(apr,by='lift',decreasing=T)[1:10]) #향상도 순으로 규칙 10개 탐색
+# 전체 규칙에서 일부 규칙 생성하기
+sausage_rules <- subset(apr, items %in% 'sausage')
+inspect(sausage_rules)
+# 시각화
+plot(apr) #규칙의 지지도(X축), 신뢰도(Y축), 향상도(색) 산포도
+plot(apr, method= 'graph') #연관규칙 네크워크 그래프. 규칙이 100개 넘으면 향상도에 따른 top100으로만 생성
+plot(apr, method = 'grouped') #LHS->RHS 빈도수 (사실 잘 모르겠음)
+plot(apr, method = 'paracoord') #지점+지점 -> RHS. 색상 = 지지도. '지점과 지점을 사는 사람이 RHS를 산다'로 해석
+```
+
