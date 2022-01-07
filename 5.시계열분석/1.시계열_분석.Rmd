@@ -1,0 +1,275 @@
+---
+title: "시계열 분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 패키지
+```{r, results='hide'}
+library(TTR)
+library(forecast)
+library(tseries)
+```
+
+# ARIMA
+
+## 데이터 준비
+```{r}
+# 데이터 불러오기 : 단순 숫자 벡터
+kings <- scan("http://robjhyndman.com/tsdldata/misc/kings.dat", skip = 3)
+```
+
+```{r}
+# 데이터 변환
+king <- ts(kings)
+plot(king)
+```
+
+```{r}
+# 데이터 분할 (train:test = 8:2)
+cut <- round(length(king)*0.8)
+train <- subset(king, end=cut)
+plot(train)
+test <- subset(king, start = cut+1)
+plot(test)
+```
+
+
+
+## 차분과 변환
+```{r}
+# 차분
+train_diff1 <- diff(train, diff=1)
+plot(train_diff1)
+# 변환
+train_log <- log(train)
+plot(train_log)
+# 차분과 변환을 동시에 해야할 경우, 변환 먼저 수행
+train_log_diff1 <- diff(log(train), diff=1)
+plot(train_log_diff1)
+```
+
+
+## 정상성 확인
+```{r}
+# p-value가 0.05보다 크면 비정상성이라 판단
+# 근데 왠만해서는 다 정상성이라고 나와서, plot 활용해서 그림으로 판단할 것
+adf.test(train_diff1, alternative = 'stationary', k=0)
+```
+
+
+
+## 모델 제시
+```{r}
+# 가정 : 차분 1번 했을 경우가 적절하다고 판단
+# ARIMA(p,d,q)
+# ACF : 절단값-1에서 q값 정의. 일반적으로 값들이 0에 가까워야 시계열이 정상성 만족한다고 판단
+# PACF : 절단값-1에서 p값 정의. 일반적으로 값들이 0에 가까워야 시계열이 정상성 만족한다고 판단
+acf(train_diff1, lag.max=20) # ARIMA(0,1,1)
+pacf(train_diff1, lag.max=20) # ARIMA(3,1,0)
+auto.arima(train) #ARIMA(0,0,0)
+# 이에 따라 ARIMA(0,1,1), ARIMA(3,1,0), ARIMA(3,1,1), ARIMA(0,0,0) 4개의 모델이 제시됨
+```
+
+
+## 모델 비교
+```{r}
+fit1 <- Arima(train, order=c(0,1,1))
+fit1
+fcast1 <- forecast(fit1, h=length(test))
+autoplot(fcast1) + autolayer(test)
+test1 <- Arima(test, model=fit1)
+a1 <- accuracy(test1)
+
+fit2 <- Arima(train, order=c(3,1,0))
+fit2
+fcast2 <- forecast(fit2, h=length(test))
+autoplot(fcast2) + autolayer(test)
+test2 <- Arima(test, model=fit2)
+a2 <- accuracy(test2)
+
+fit3 <- Arima(train, order=c(3,1,1))
+fit3
+fcast3 <- forecast(fit3, h=length(test))
+autoplot(fcast3) + autolayer(test)
+test3 <- Arima(test, model=fit3)
+a3 <- accuracy(test3)
+
+fit4 <- Arima(train, order=c(0,0,0))
+fit4
+fcast4 <- forecast(fit4, h=length(test))
+autoplot(fcast4) + autolayer(test)
+test4 <- Arima(test, model=fit4)
+a4 <- accuracy(test4)
+
+AIC <- c(fit1$aic, fit2$aic, fit3$aic, fit4$aic)
+compare <- rbind(a1,a2,a3,a4)
+compare <- cbind(compare,AIC)
+# RMSE, MAE, MAPE, MASE, AIC 값이 낮고, 그림 상 예쁜 모델을 최종 모델로 선정
+# 개인적으로는 그림상 예쁜 모델을 우선으로 선택
+compare
+```
+
+## 모델 확정
+```{r}
+model <- fit3
+```
+
+##잔차 및 잡음 분석
+```{r}
+#그림1 : 데이터 잔차값
+#그림2 : 잔차 ACF. 모두 절단선 내 존재하면 white noise
+#그림3 : 잔차 분포도. 정규분포가 이상적
+#Ljung-Box test : p-value가 0.05 이상이면 white noise
+checkresiduals(model)
+```
+
+
+## 데이터 예측
+```{r}
+pred <- forecast(model, h = 20)  # h는 예측할 데이터 수
+autoplot(pred)
+```
+
+# SARIMA
+계절성 성분이 추가된 ARIMA 모델
+ADP 시험에서 한 번 기출로 제시된 적 있어서 찾아보았지만, 정확한 내용은 아님
+
+## 데이터 준비
+```{r}
+# 데이터 불러오기 : 애초부터 ts 형태. 1년에 12개에 데이터로 구성.
+# 주기가 있지만, 기존에 ts 형태가 아닌 숫자 벡터 형태로 주어진다면
+# ts(data, frequency = 1년 빈도, start = c(시작연도, 시작월))
+data(AirPassengers)
+air <- AirPassengers
+str(air)
+air
+plot(air)
+spl_air <- decompose(air)
+autoplot(spl_air)
+```
+```{r}
+# 고정성 수행 : 추세, 계젤성을 제거
+air_adj <- air - (spl_air$seasonal + spl_air$trend)
+air_adj[is.na(air_adj)] <- mean(air_adj, na.rm=T) #NA값을 중앙값으로 대체
+plot(air_adj)
+```
+
+
+
+```{r}
+# 데이터 분할 (train:test = 8:2)
+cut <- round(length(air_adj)/12*0.8)
+train <- subset(air_adj, end=cut*12)
+plot(train)
+test <- subset(air_adj, start = cut*12+1)
+plot(test)
+```
+
+## 차분과 변환
+```{r}
+# 차분
+train_diff1 <- diff(train, diff=1)
+plot(train_diff1)
+# 변환은 고정성을 수행하면 NA값이 발생하여 오히려 이상해짐
+```
+
+
+## 정상성 확인
+```{r}
+# p-value가 0.05보다 크면 비정상성이라 판단
+# 근데 왠만해서는 다 정상성이라고 나와서, plot 활용해서 그림으로 판단할 것
+adf.test(train_diff1, alternative = 'stationary', k=0)
+```
+
+
+
+## 모델 제시
+```{r}
+# 가정 : 차분 1번 했을 경우가 적절하다고 판단
+# ARIMA(p,d,q)
+# ACF : 절단값-1에서 q값 정의. 일반적으로 값들이 0에 가까워야 시계열이 정상성 만족한다고 판단
+# PACF : 절단값-1에서 p값 정의. 일반적으로 값들이 0에 가까워야 시계열이 정상성 만족한다고 판단
+acf(train_diff1, lag.max=20) # ARIMA(0,1,1)
+pacf(train_diff1, lag.max=20) # ARIMA(3,1,0). 사실 이렇게 다시 증가하는 그림 나오면 정상성이 아닌 경우임
+auto.arima(train) #ARIMA(2,0,2)
+# 이에 따라 ARIMA(0,1,1), ARIMA(3,1,0), ARIMA(3,1,1), ARIMA(2,0,2) 4개의 모델이 제시됨
+```
+
+
+## 모델 비교
+```{r}
+# seasonal 인자는 auto.arima 수행결과 반영
+fit1 <- Arima(train, order=c(0,1,1), seasonal = list(order=c(0,1,0), period=12))
+fit1
+fcast1 <- forecast(fit1, h=length(test))
+autoplot(fcast1) + autolayer(test)
+test1 <- Arima(test, model=fit1)
+a1 <- accuracy(test1)
+
+fit2 <- Arima(train, order=c(3,1,0), seasonal = list(order=c(0,1,0), period=12))
+fit2
+fcast2 <- forecast(fit2, h=length(test))
+autoplot(fcast2) + autolayer(test)
+test2 <- Arima(test, model=fit2)
+a2 <- accuracy(test2)
+
+fit3 <- Arima(train, order=c(3,1,1), seasonal = list(order=c(0,1,0), period=12))
+fit3
+fcast3 <- forecast(fit3, h=length(test))
+autoplot(fcast3) + autolayer(test)
+test3 <- Arima(test, model=fit3)
+a3 <- accuracy(test3)
+
+fit4 <- Arima(train, order=c(2,0,2), seasonal = list(order=c(0,1,0), period=12))
+fit4
+fcast4 <- forecast(fit4, h=length(test))
+autoplot(fcast4) + autolayer(test)
+test4 <- Arima(test, model=fit4)
+a4 <- accuracy(test4)
+
+AIC <- c(fit1$aic, fit2$aic, fit3$aic, fit4$aic)
+compare <- rbind(a1,a2,a3,a4)
+compare <- cbind(compare,AIC)
+# RMSE, MAE, MAPE, MASE, AIC 값이 낮고, 그림 상 예쁜 모델을 최종 모델로 선정
+# 개인적으로는 그림상 예쁜 모델을 우선으로 선택
+compare
+```
+
+## 모델 확정
+```{r}
+model <- fit3
+```
+
+##잔차 및 잡음 분석
+```{r}
+#그림1 : 데이터 잔차값
+#그림2 : 잔차 ACF. 모두 절단선 내 존재하면 white noise
+#그림3 : 잔차 분포도. 정규분포가 이상적
+#Ljung-Box test : p-value가 0.05 이상이면 white noise
+checkresiduals(model)
+```
+
+
+## 데이터 예측
+```{r}
+pred <- forecast(model, h = 12*3) # h는 예측할 데이터 수. 주기 * 보고싶은 연도 수
+autoplot(pred)
+```
