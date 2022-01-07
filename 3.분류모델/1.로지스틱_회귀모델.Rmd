@@ -1,0 +1,144 @@
+---
+title: "로지스틱 회귀모델"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(caret)
+library(dplyr)
+```
+
+```{r}
+#bin은 범주형 변수를 0과 1로 표시한 경우
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+pima_scale <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima$diabetes)
+pima_bin <- pima
+pima_bin$diabetes <- as.factor(ifelse(pima_bin$diabetes=='pos',1,0))
+pima_scale_bin <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima_bin$diabetes)
+head(pima_scale_bin)
+folds <- createFolds(pima$diabetes, k=10)
+idx_tr <- unname(unlist(folds[1:5]))
+idx_vd <- unname(unlist(folds[6:8]))
+idx_ts <- unname(unlist(folds[9:10]))
+train <- pima[idx_tr,]
+valid <- pima[idx_vd,]
+test <- pima[idx_ts,]
+train_bin <- pima_bin[idx_tr,]
+valid_bin <- pima_bin[idx_vd,]
+test_bin <- pima_bin[idx_ts,]
+train_scale <- pima_scale[idx_tr,]
+valid_scale <- pima_scale[idx_vd,]
+test_scale <- pima_scale[idx_ts,]
+train_scale_bin <- pima_scale_bin[idx_tr,]
+valid_scale_bin <- pima_scale_bin[idx_vd,]
+test_scale_bin <- pima_scale_bin[idx_ts,]
+```
+
+# 모델링
+```{r}
+model <- step(glm(diabetes~., train, family = 'binomial'), direction = 'both')
+summary(model)
+#결정계수로 '적합성 검정' : 식이 y 값을 설명해주는 정도
+#F-통계량, p-value로 '유의성 검정' : 모델 자체의 타당성
+#각 회귀 계수들의 standard error (표준오차)
+# : 잔차(실제값-예측값)의 표준편차
+# : 모델이 회귀계수를 정확히 추정하는지 알려주는 지표
+# : 낮을수록 정확하게 추정했다는 의미 (0.05보다 높을 경우 제거한 후 다시 모델링)
+```
+
+# 다중공선성 확인
+```{r, results='hide'}
+library(car)
+```
+
+```{r, results='hide'}
+vif(model) #10보다 큰 변수 있으면 확인 후 제거
+```
+
+# cutoff 결정
+분류모델 파트에서 해당 문서에만 이 단락을 다루지만,각 집단에 속할 확률이 나오며, 이진분류 모델인 경우 적용 가능
+
+(로지스틱 회귀모델은 이진분류 모델이기 때문에 당연히 적용 가능)
+
+해당 방식은 F1-Score가 가장 잘 나오게 하는 cutoff를 결정하는 방식 (굳이 수행하지 않음)
+
+일반적으로는 cutoff를 0.5로 설정하거나, 문제 상황에 따라 의사결정자의 판단에 따라 결정
+
+(예를 들어, 아예 발견하지 못하는 경우보다 오판하더라도 대비하는 게 나은 상황에서는 cutoff를 낮게 설정)
+
+```{r, results='hide'}
+library(dplyr)
+library(tibble)
+```
+
+```{r}
+co_valid <- predict(model, valid, type='response')
+co_range <- seq(0,1,0.01)
+pred_mtrx <- as.matrix(co_valid) %*% rep(1,length(co_range))
+co_mtrx <- rep(1,NROW(co_valid)) %*% t(co_range)
+pred_class_by_cutoff <- as.data.frame(pred_mtrx > co_mtrx) %>% mutate_all(~as.factor(as.numeric(.)))
+colnames(pred_class_by_cutoff) <- co_range
+cnfm <- list()
+crit <- list()
+
+for (i in seq_along(pred_class_by_cutoff)) {
+  cm = caret::confusionMatrix(pred_class_by_cutoff[,i], valid_bin$diabetes)
+  cnfm[[i]] = cm
+  crit[[i]] = round(cm$byClass,4)
+}
+eval_by_cutoff <- as.tibble(cbind(co_range, t(data.frame(crit))))
+head(eval_by_cutoff)
+co_metric_f1 <- arrange(eval_by_cutoff, -F1)
+co_f1 <- co_metric_f1$co_range[1]
+```
+
+
+
+# 최종 모델 결정
+```{r}
+pred <- predict(model, test, type='response')
+pred_bin <- as.factor(ifelse(pred >= co_f1, 1 ,0))
+```
+
+
+# 모델 평가
+```{r, results='hide'}
+library(ROCR)
+```
+
+
+```{r}
+caret::confusionMatrix(pred_bin, test_bin$diabetes, positive='1')
+precision <- posPredValue(pred_bin, test_bin$diabetes, positive='1')
+recall <- sensitivity(pred_bin, test_bin$diabetes, positive='1')
+F1_score <- (2*precision*recall)/(precision+recall)
+roc_curve <- prediction(pred, test_bin$diabetes)
+plot(performance(roc_curve,'tpr','fpr'))
+abline(a=0, b=1,lty=2, col='black')
+performance(roc_curve,'auc')@y.values # auc 값
+```
+
+
+

@@ -1,0 +1,185 @@
+---
+title: "앙상블"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(caret)
+library(dplyr)
+```
+
+```{r}
+#bin은 범주형 변수를 0과 1로 표시한 경우
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+pima_scale <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima$diabetes)
+pima_bin <- pima
+pima_bin$diabetes <- as.factor(ifelse(pima_bin$diabetes=='pos',1,0))
+pima_scale_bin <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima_bin$diabetes)
+head(pima_scale_bin)
+folds <- createFolds(pima$diabetes, k=10)
+idx_tr <- unname(unlist(folds[1:5]))
+idx_vd <- unname(unlist(folds[6:8]))
+idx_ts <- unname(unlist(folds[9:10]))
+train <- pima[idx_tr,]
+valid <- pima[idx_vd,]
+test <- pima[idx_ts,]
+train_bin <- pima_bin[idx_tr,]
+valid_bin <- pima_bin[idx_vd,]
+test_bin <- pima_bin[idx_ts,]
+train_scale <- pima_scale[idx_tr,]
+valid_scale <- pima_scale[idx_vd,]
+test_scale <- pima_scale[idx_ts,]
+train_scale_bin <- pima_scale_bin[idx_tr,]
+valid_scale_bin <- pima_scale_bin[idx_vd,]
+test_scale_bin <- pima_scale_bin[idx_ts,]
+```
+
+# 배깅 
+```{r, results='hide'}
+library(ipred)
+```
+
+## 모델링
+```{r}
+# 적절한 반복 수 찾기
+vd_acc <- c()
+for (i in 1:50) {
+  cand <- ipred::bagging(diabetes~., train, nbagg = i)
+  cand_pred <- predict(cand, valid)
+  vd_acc <- c(vd_acc, caret::confusionMatrix(cand_pred, valid$diabetes)$overall[[1]])
+}
+plot(1:50, vd_acc, type='l')
+min(which(vd_acc == max(vd_acc))) #최적 반복 수 도출
+```
+
+```{r}
+# 모델 생성
+model <- ipred::bagging(diabetes~., train, nabagg = 32)
+```
+
+## 예측 모델 생성
+```{r}
+pred_prob <- predict(model, test, type='prob')[,2] #이진분류라서 인덱스를 통해 두 번째 클래스에 속할 확률로 지정
+pred_class <- predict(model, test, type='class')
+```
+
+# 부스팅
+```{r, results='hide'}
+library(adabag)
+```
+
+## 모델링
+```{r}
+# 적절한 반복 수 찾기(시간이 꽤 소요됨)
+vd_acc <- c()
+for (i in 1:50) {
+  cand <- bagging(diabetes~., train, mfinal = i, boos=T)
+  cand_pred <- predict(cand, valid)
+  vd_acc <- c(vd_acc, caret::confusionMatrix(as.factor(cand_pred$class), valid$diabetes)$overall[[1]])
+}
+plot(1:50, vd_acc, type = 'l')
+plot(1:50, vd_acc, type='l')
+min(which(vd_acc == max(vd_acc))) #최적 반복 수 도출
+```
+
+```{r}
+# 모델 생성
+model <- bagging(diabetes~., train, mfinal=5, boos=T)
+```
+
+## 예측 모델 생성
+```{r}
+pred <- predict(model, test)
+pred_prob <- pred$prob[,2] #이진분류라서 인덱스를 통해 두 번째 클래스에 속할 확률로 지정
+pred_class <- pred$class
+```
+
+# XGboost
+```{r, results='hide'}
+library(xgboost)
+```
+
+## 데이터 준비
+```{r}
+train_label <- as.integer(train$diabetes)-1 #종속변수가 0부터 시작해야 함
+mat_train <- as.matrix(train[, !names(train) %in% 'diabetes'])
+mat_valid <- as.matrix(valid[, !names(valid) %in% 'diabetes'])
+mat_test <- as.matrix(test[, !names(test) %in% 'diabetes'])
+xgb_train <- xgb.DMatrix(data = mat_train,
+                         label = train_label)
+xgb_valid <- xgb.DMatrix(data = mat_valid)
+xgb_test <- xgb.DMatrix(data = mat_test)
+```
+
+
+## 주요 매개변수 설정
+```{r}
+param_list = list(
+  booster = 'gbtree', #부스터 방법. gbtree와 gblinear 존재
+  eta = 0.001, #학습률. 작을수록 과대적합에 면역
+  max_depth = 10, #한 트리의 최대 깊이
+  gamma = 5, #패널티를 부여하는 숫자. 클수록 트리의 깊이가 줄어서 보수적인 알고리즘
+  subsample = 0.5, #훈련 데이터의 샘플 비율
+  colsample_bytree = 0.5, #개별 트리 구성할 때 컬럼의 subsample 비율
+  objective = 'binary:logistic', #목적 함수
+  eval_metric = 'auc' #모델 평가 함수. rmse, error 등 존재
+)
+```
+
+
+## 모델링
+```{r}
+xgb_model <- xgb.train(params = param_list,
+                       data = xgb_train,
+                       nrounds = 200, #반복횟수
+                       early_stopping_rounds = 10, #AUC가 N번 이상 증가하지 않으면 조기 중단
+                       watchlist=list(val1 = xgb_train),
+                       verbose=1)
+```
+
+## 예측 모델 생성
+```{r}
+pred_prob <- predict(xgb_model, xgb_test)
+pred_class <- as.factor(ifelse(pred_prob > 0.5, 'pos','neg'))
+```
+
+
+
+
+# 모델 평가
+```{r, results='hide'}
+library(ROCR)
+```
+
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes, positive='pos')
+precision <- posPredValue(pred_class, test$diabetes, positive='pos')
+recall <- sensitivity(pred_class, test$diabetes, positive='pos')
+F1_score <- (2*precision*recall)/(precision+recall)
+roc_curve <- prediction(pred_prob, test$diabetes)
+plot(performance(roc_curve,'tpr','fpr'))
+abline(a=0, b=1,lty=2, col='black')
+performance(roc_curve,'auc')@y.values # auc 값
+```

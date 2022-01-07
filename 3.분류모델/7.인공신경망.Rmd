@@ -1,0 +1,163 @@
+---
+title: "인공신경망"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(caret)
+library(dplyr)
+```
+
+```{r}
+#bin은 범주형 변수를 0과 1로 표시한 경우
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+pima_scale <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima$diabetes)
+pima_bin <- pima
+pima_bin$diabetes <- as.factor(ifelse(pima_bin$diabetes=='pos',1,0))
+pima_scale_bin <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima_bin$diabetes)
+head(pima_scale_bin)
+folds <- createFolds(pima$diabetes, k=10)
+idx_tr <- unname(unlist(folds[1:5]))
+idx_vd <- unname(unlist(folds[6:8]))
+idx_ts <- unname(unlist(folds[9:10]))
+train <- pima[idx_tr,]
+valid <- pima[idx_vd,]
+test <- pima[idx_ts,]
+train_bin <- pima_bin[idx_tr,]
+valid_bin <- pima_bin[idx_vd,]
+test_bin <- pima_bin[idx_ts,]
+train_scale <- pima_scale[idx_tr,]
+valid_scale <- pima_scale[idx_vd,]
+test_scale <- pima_scale[idx_ts,]
+train_scale_bin <- pima_scale_bin[idx_tr,]
+valid_scale_bin <- pima_scale_bin[idx_vd,]
+test_scale_bin <- pima_scale_bin[idx_ts,]
+```
+
+# ANN
+```{r, results='hide'}
+library(nnet)
+```
+
+## 모델링
+```{r}
+# size : 은닉 노드 수
+# maxit : 최대 반복 횟수
+# decay : 
+model <- nnet(diabetes~., train, size=3, maxit=1000, decay=5e-4)
+```
+
+## 시각화
+```{r, results='hide'}
+library(devtools)
+source_url('https://gist.githubusercontent.com/fawda123/7471137/raw/466c1474d0a505ff044412703516c34f1a4684a5/nnet_plot_update.r')
+library(reshape2)
+library(NeuralNetTools)
+```
+
+
+```{r}
+plot.nnet(model)
+garson(model) #변수 중요도. 이진분류에서만 작동
+```
+
+
+## 예측 모델 생성
+```{r}
+pred_prob <- predict(model, test, type = 'raw') # 이진 분류의 경우 자동으로 두 번째 클래스에 속할 확률만 제시
+pred_class <- as.factor(predict(model, test, type = 'class'))
+```
+
+## 모델 평가
+```{r, results='hide'}
+library(ROCR)
+```
+
+### 이진분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes, positive='pos')
+precision <- posPredValue(pred_class, test$diabetes, positive='pos')
+recall <- sensitivity(pred_class, test$diabetes, positive='pos')
+F1_score <- (2*precision*recall)/(precision+recall)
+roc_curve <- prediction(pred_prob, test$diabetes)
+plot(performance(roc_curve,'tpr','fpr'))
+abline(a=0, b=1,lty=2, col='black')
+performance(roc_curve,'auc')@y.values # auc 값
+```
+
+### 다지분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes)
+```
+
+
+# SOM
+```{r, results='hide'}
+library(kohonen)
+library(nnet)
+```
+
+## 데이터 준비
+```{r}
+train_set <- list(x=as.matrix(select_if(train_scale,is.numeric)), diabetes = as.factor(train_scale$diabetes))
+valid_set <- list(x=as.matrix(select_if(valid_scale,is.numeric)), diabetes = as.factor(valid_scale$diabetes))
+test_set <- list(x=as.matrix(select_if(test_scale,is.numeric)), diabetes = as.factor(test_scale$diabetes))
+```
+
+## 모델링
+```{r}
+som_grid <- somgrid(xdim=3, ydim=5, topo = 'hexagonal') # 차원도 의사결정자가 지정할 수 있음
+som <- xyf(train_set$x, class.ind(train_set$diabetes),
+           grid = som_grid, rlen = 200, alpha = c(0.05, 0.01))
+plot(som, type='changes') #학습횟수에 따른 뉴런과 학습 데이터 사이의 거리
+plot(som, type = 'counts') #각 뉴런이 몇개의 학습 데이터와 매핑되는지 (모두 동일하는 게 이상적)
+plot(som, type='dist.neighbours') #각 뉴런 사이의 거리 (거리 = 비유사도)
+par(mfrow=c(1,2))
+plot(som, type='codes', main = c('Code X','Code Y')) #각 뉴런에 대한 학습데이터의 기여율
+som.hc <- cutree(hclust(dist(som$codes[[2]])),3)
+add.cluster.boundaries(som, som.hc, col='red')
+par(mfrow=c(1,1))
+```
+
+## 예측 모델 생성
+```{r}
+pred <- predict(som, test_set$x, whatmap = 1)
+pred_class <- pred$predictions[[2]]
+```
+
+## 모델 평가
+### 이진분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes, positive='pos')
+precision <- posPredValue(pred_class, test$diabetes, positive='pos')
+recall <- sensitivity(pred_class, test$diabetes, positive='pos')
+F1_score <- (2*precision*recall)/(precision+recall)
+```
+
+### 다지분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes)
+```
+
