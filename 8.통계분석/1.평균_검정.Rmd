@@ -1,0 +1,177 @@
+---
+title: "평균_검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 모수 검정
+
+## 단일표본 평균 검정
+하나의 모집단에서 추출한 표본으로부터 모평균 추정  
+해당 변수의 평균이 추정하는 평균에 일치하는지 검정  
+귀무가설 : 변수의 평균이 추정하는 평균과 동일하다 
+
+
+```{r}
+dat1 <- rnorm(30, mean=10)
+t.test(dat1, mu=10)
+```
+
+```{r}
+dat2 <- rnorm(30, mean=20)
+t.test(dat2, mu=10)
+```
+
+## 독립 이표본 평균 검정
+두 모집단에서 추출한 표본으로부터 두 모집단의 평균이 같은지 추정
+두 집단의 한 변수의 평균이 동일한 지 검정  
+귀무가설 : 두 집단의 평균이 동일하다
+### 사용 데이터
+```{r}
+data(sleep)
+dat <- sleep[,-3]
+head(dat)
+```
+
+### 등분산 검정
+독립 이표본 평균 검정은 등분산 가정을 하기 때문에, 등분산 검정이 선행되어야 한다  
+```{r}
+# p-value가 0.05보다 크면 등분산 만족
+var.test(extra~group, dat)
+```
+
+### 평균 검정 수행
+```{r}
+# paired : 독립 이표본 평균 검정 (F) 인지, 대응 이표본 평균 검정 (T) 인지
+# var.equal : 등분산 만족 여부 
+# p-value가 0.05 보다 크면 두 집단의 평균이 같다고 볼 수 있다
+t.test(extra~group, data=dat, paired=F, var.equal=T)
+```
+
+
+## 대응 이표본 평균 검정
+하나의 모집단에서 추출한 표본에 대해서, 어떤 처리를 하였을 때 전후 차이가 있는지 검정  
+귀무가설 : 처리 전후 차이가 없다 (평균이 동일하다)
+
+### 사용 데이터
+독립 이표본 평균 검정과 동일한 데이터 사용하겠습니다  
+위에서는 서로 다른 모집단(그룹)에서 표본추출한 경우라고 생각하고,  
+지금은 하나의 모집단에서 추출한 변수인데 group1은 처리 전, group2는 처리 후라고 생각합시다
+```{r}
+data(sleep)
+dat <- sleep[,-3]
+head(dat)
+```
+
+### 평균 검정 수행
+```{r}
+# paired : 독립 이표본 평균 검정 (F) 인지, 대응 이표본 평균 검정 (T) 인지
+# var.equal : 등분산 만족 여부 
+# p-value가 0.05 보다 크면 두 집단의 평균이 같다고 볼 수 있다
+```
+
+
+```{r}
+t.test(extra~group, data=dat, paired=T, var.equal=T)
+```
+
+# 비모수 검정
+
+## 윌콕슨 부호 순위 검정
+차이의 부호 뿐 아니라, 차이의 상대적인 크기도 고려한 검정 방법
+
+### 일표본 중위수 검정
+귀무가설 : 변수의 평균이 추정하는 평균과 동일하다 
+```{r}
+set.seed(1234)
+dat <- round(rnorm(100,mean=10)*10)/10
+dat
+```
+
+```{r}
+wilcox.test(dat, mu=9)
+mean(dat)
+```
+
+wilcox.test 함수는 별 문제없이 수행되지만  
+사실 윌콕슨 부호 순위 검정에서 추정하는 값과 동일한 값을 가지는 데이터는 유효하지 않는다고 판단  
+따라서 데이터의 수는 100개이지만, 실제로 해당 검정에서 유효한 데이터 수는 다음과 같다 
+```{r}
+NROW(dat[-which(dat == 9)])
+```
+
+
+
+### 대응표본 중위수 검정
+귀무가설 : 처리 전후 차이가 없다 (평균이 동일하다)
+
+```{r}
+x <- c(51.4, 52.0, 45.5, 54.5, 52.3, 50.9, 52.7, 50.3, 53.8, 53.1,
+       50.1, 51.5, 45.9, 53.1, 51.8, 50.3, 52.0, 49.9, 52.5, 53.0)
+stat <- rep(c('before','after'), each=10)
+dat <- data.frame(x,stat)
+dat$stat <- factor(dat$stat)
+dat
+```
+
+```{r}
+wilcox.test(x~stat, paired=T)
+```
+
+```{r, results='hide'}
+library(plyr)
+```
+
+```{r}
+ddply(dat, .(stat), summarise, x = mean(x))
+```
+
+
+
+## 윌콕슨 순위 합 검정
+두 표본의 혼합 표본에서 순위 합을 이용한 검정 방법  
+
+### 독립 표본의 중위수 검정  
+귀무가설 : 두 집단의 평균이 동일하다
+
+```{r, results='hide'}
+library(MASS)
+```
+
+```{r}
+dat <- Cars93[,c('Price','Origin')]
+head(dat)
+```
+
+```{r}
+wilcox.test(Price~Origin, dat, paired=F)
+```
+
+```{r, results='hide'}
+library(plyr)
+```
+
+```{r}
+ddply(dat, .(Origin), summarise, Price = mean(Price))
+```
+
+
+

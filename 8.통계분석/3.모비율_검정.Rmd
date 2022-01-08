@@ -1,0 +1,39 @@
+---
+title: "모비율 검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 일표본 비율 검정
+표본으로부터 모집단의 비율 추정  
+귀무가설 : 비율이 추정한 p와 같다고 볼 수 있다
+```{r}
+# 100번 시행에서 42번 성공한 경우, 모비율을 0.5라고 볼 수 있는가
+prop.test(42, 100, p=0.5, alternative='two.sided')
+```
+
+
+# 이표본 비율 검정
+두 모집단의 비율 추정  
+귀무가설 : 두 집단의 비율이 같다고 볼 수 있다
+```{r}
+# 100번 시행에서 42번 성공한 경우와 90번 시행에서 55번 성공한 경우, 두 비율이 같다고 볼 수 있는가
+prop.test(c(45,55), c(100,90), alternative='two.sided')
+```

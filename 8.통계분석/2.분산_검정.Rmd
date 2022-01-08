@@ -1,0 +1,50 @@
+---
+title: "분산 검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 일표본 분산 검정
+하나의 모집단에서 추출한 표본으로부터 모분산 추정   
+해당 변수의 분산이 추정하는 분산에 일치하는지 검정  
+귀무가설 : 추정하는 분산과 해당 변수의 분산이 동일하다고 볼 수 있다
+```{r, results='hide'}
+library(EnvStats)
+```
+
+```{r}
+dat <- iris[,2]
+# sigma.squared가 추정하는 분산값
+# p-value가 0.05 보다 크면 추정하는 분산과 해당 변수의 분산이 동일하다고 볼 수 있다
+varTest(dat, alternative = 'two.sided', conf.level=0.95, sigma.squared = 1 ,data.name=NULL)
+
+```
+
+# 이표본 분산 검정
+두 모집단에서 추출한 표본으로부터 두 모집단의 분산이 같은지 추정  
+두 변수의 분산이 동일한 지 검정  
+귀무가설 : 두 변수의 분산이 동일하다
+```{r}
+data(iris)
+# p-value가 0.05 보다 크면 두 변수의 분산이 동일하다고 볼 수 있다
+var.test(iris$Sepal.Width, iris$Sepal.Length, alternative='two.sided')
+```
+
+
