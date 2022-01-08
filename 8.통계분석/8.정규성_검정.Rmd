@@ -1,0 +1,48 @@
+---
+title: "정규성 검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# shapiro.test
+귀무가설 : 데이터가 정규성을 만족한다 (정규분포 형태이다)
+```{r}
+shapiro.test(iris$Sepal.Length)
+```
+
+# QQ Plot
+비교하고자 하는 분포의 분위수끼리 좌표평면에 그린 적합도 검정
+
+## qqnorm
+데이터를 정규분포와 비교한 QQ Plot  
+대각선이면 데이터가 정규분포 만족
+```{r}
+qqnorm(iris$Sepal.Length)
+qqline(iris$Sepal.Length)
+```
+
+## qqplot
+두 데이터의 분포가 동일한 지 살펴보는 QQ plot  
+대각선이면 두 데이터의 분포가 동일
+```{r}
+qqplot(iris$Sepal.Length, iris$Petal.Length)
+```
+
