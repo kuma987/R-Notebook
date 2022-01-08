@@ -1,0 +1,134 @@
+---
+title: "분산분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 일원 배치 분산분석
+세 개 이상의 집단으로 이루어진 하나의 범주형 변수에 대해서, 하나의 연속형 변수의 평균값이 차이가 나는지 검증    
+귀무가설 : 집단의 평균간에 차이가 없다  
+대립가설 : 집단의 평균간에 차이가 있다
+
+가정1 : 정규성 검정  
+가정2 : 등분산 검정
+
+## 사용 데이터
+```{r, results='hide'}
+data <- iris
+# 분석하고자 하는 목표 : Species(그룹)에 따라 Sepal.Width(연속)에 차이가 있는지 여부 확인 
+```
+
+
+## 정규성 검정
+```{r}
+# 귀무가설 : 정규성이다
+# p-value가 0.05보다 크면 정규성 만족
+shapiro.test(iris$Sepal.Width)
+```
+
+
+##등분산 검정
+```{r}
+# 귀무가설 : 등분산이다
+# p-value가 0.05보다 크면 등분산 만족
+bartlett.test(Sepal.Width~Species, iris)
+```
+
+
+## 정규성을 만족하는 경우
+### 분산분석
+```{r}
+model <- aov(Sepal.Width~Species, iris)
+# Pr(>F)가 0.05보다 크면 평균의 차이가 없다는 것을 의미
+summary(model)
+```
+
+### 사후 검정
+
+```{r, results='hide'}
+# 분산분석 결과 평균에 차이가 난다고 나온 경우 수행
+library(agricolae)
+```
+
+```{r}
+compare1 <- LSD.test(model, 'Species', p.adj='bonferroni', group=F)
+# p-value가 0.05보다 작은 경우가 평균에 차이가 난다는 것을 의미
+compare1$comparison
+compare2 <- LSD.test(model, 'Species', p.adj='bonferroni', group=T)
+plot(compare2)
+```
+
+
+
+## 정규성을 만족하지 않는 경우
+해당 데이터는 정규성을 만족하지만, 일단 수행  
+따라서 해당 결과는 위에서 수행한 결과와 상이할 수 있음
+### 분산분석
+```{r}
+model <- kruskal.test(Sepal.Width~Species, iris)
+# p-value가 0.05보다 크면 평균의 차이가 없다는 것을 의미
+model
+```
+### 사후 검정
+```{r, results='hide'}
+# 분산분석 결과 평균에 차이가 난다고 나온 경우 수행
+library(pgirmess)
+library(ggplot2)
+```
+
+```{r}
+compare <- kruskalmc(iris$Sepal.Width, iris$Species)
+df <- compare$dif.com
+df <- df[which(df$difference==T)]
+df
+df$obj <- rownames(df)
+ggplot(df) + geom_bar(stat='identity', aes(x=reorder(obj, -obs.dif), y = obs.dif))
+```
+
+# 이원배치 분산분석
+두 개의 범주형 변수에 영향으로 1개의  연속형 변수의 평균에 차이가 나는지 검증  
+(해당 분석도 가정을 만족해야할텐데, 일단 지금은 어떻게 하는지 잘 몰라서 분산분석만 수행)
+## 사용 데이터
+```{r}
+data(mtcars)
+mtcars$cyl <- factor(mtcars$cyl)
+mtcars$am <- factor(mtcars$am)
+```
+
+## 분산분석
+```{r}
+model <- aov(mpg~cyl*am, mtcars)
+summary(model)
+```
+
+```{r, results='hide'}
+library(plyr)
+```
+
+## 차이 확인
+```{r}
+ddply(mtcars, .(cyl,am), summarise, mpg = mean(mpg))
+```
+
+
+
+
+
+

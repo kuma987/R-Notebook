@@ -1,0 +1,63 @@
+---
+title: "런 검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 개념
+일련의 연속적인 관측값들이 임의적(random)으로 나타난 것인지를 검정하는 방법  
+관측값들이 얻어진 순서에 근거하는 비모수적 검정법  
+
+귀무가설 : 관측값은 임의적이다  
+대립가설 : 관측값은 연관이 있다
+
+
+
+# 문제
+상품 a와 b에 대해서 다음과 같은 구매 패턴이 나타났다  
+aa b aaa bbbb aa b aa bb aa bbb aa bb a b
+```{r}
+dat = c('a','a','b','a','a','a','b','b','b','b','a','a','b','a','a','b','b','a','a','b','b','b','a','a','b','b','a','b')
+```
+
+# 풀이
+```{r}
+# n1 : 표본 내에서 1로 표시된 관측치의 총수 (여기선 a)
+# n2 : 표본 내에서 2로 표시된 관측치의 총수 (여기선 b)
+# r : 표본 내에서 연속의 총 수
+n1 = 14
+n2 = 14
+r = 14
+# 평균과 분산 구하기
+mu = {(2*n1*n2)/(n1+n2)} + 1
+var = {2*n1*n2*(2*n1*n2-n1-n2)}/{(n1+n2)^2 * (n1+n2-1)}
+mu
+var
+# z값 : (주장-평균)/표준편차
+```
+# 가설 검정
+```{r, results='hide'}
+library(tseries)
+```
+
+```{r}
+# p-value가 0.05보다 크면 두 값의 순서가 임의적으로 나타났다고 판단
+runs.test(as.factor(dat))
+```

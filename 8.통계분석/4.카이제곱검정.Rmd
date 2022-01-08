@@ -1,0 +1,128 @@
+---
+title: "카이제곱검정"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+# 적합성 검정
+관찰되는 실제적인 도수들이 우리가 가정한 확률분포에 얼마나 일치하는 지 검정
+
+귀무가설 : 관촬된 도수들이 가정한 확률분포를 따른다
+
+## 사용 데이터
+```{r}
+# 관측값
+O <- c(26, 30, 26, 18, 9, 11)
+# 기대확률
+P <- c(0.143, 0.279, 0.274, 0.175, 0.085, 0.044)
+```
+
+
+## 검정 수행
+```{r}
+# rescale.p : p의 합이 1이여야 하는데, 그렇지 않을 경우 합이 1이 되도록 변환
+result <- chisq.test(x = O, p=P, rescale.p = TRUE)
+# p-value가 0.05보다 크면 가정한 확률분포를 따른다고 해석
+result
+```
+
+
+
+# 독립성 검정
+여러 범주를 가지는 두 개의 범주형 변수가 독립적인지, 서로 연관성이 있는지 검정
+
+귀무가설 : 서로 독립이다
+
+## 사용 데이터 
+```{r}
+dat <- read.csv('/Users/JGH/Desktop/github/R-Notebook/data/homogenity.csv')
+dat <- dat[,c('method','survey')]
+dat$method <- factor(dat$method)
+dat$survey <- factor(dat$survey)
+head(dat)
+```
+
+## 검정 수행
+```{r, results='hide'}
+library(gmodels)
+```
+
+```{r}
+CrossTable(dat$method, dat$survey)
+# p-value가 0.05보다 크면 서로 독립이다
+chisq.test(dat$method, dat$survey)
+```
+
+
+
+# 동질성 검정
+하나의 범주형 변수를 기준으로, 각 그룹이 다른 범주형 변수에 분포가 동일한 성질을 띄는지 검정 (분포가 비슷한가 확인)
+
+귀무가설 : 동질성을 가진다 (분포에 차이가 없다)
+
+## 사용 데이터
+```{r}
+dat <- read.csv('/Users/JGH/Desktop/github/R-Notebook/data/homogenity.csv')
+dat <- dat[,c('method','survey')]
+dat$method <- factor(dat$method)
+dat$survey <- factor(dat$survey)
+head(dat)
+```
+
+## 검정 수행
+
+```{r, results='hide'}
+library(gmodels)
+```
+
+```{r}
+CrossTable(dat$method, dat$survey)
+# p-value가 0.05보다 크면 동질하다
+chisq.test(dat$method,dat$survey)
+```
+
+```{r, results='hide'}
+library(ggplot2)
+```
+
+
+```{r}
+# 시각화하여 확인
+ggplot(dat) + geom_bar(aes(x=survey, fill=survey)) + facet_grid(method~.)
+```
+
+# 독립성 검정과 동질성 검정의 비교
+
+가설 설정 부분만 차이가 날 뿐, 검정 수행 부분은 동일하게 진행된다
+
+개념적 해석    
+독립성 검정은 하나의 모집단에서 표본추출하지만,  
+동질성 검정은 두 개 이상의 모집단에서 표본추출하여 분할표를 생성한다      
+
+실제 수행한 것에서 해석   
+독립성 검정에서는 주어진 데이터가 하나의 표본이며, method와 survey를 각각의 요인으로 보고 두 요인이 독립인지 검증  
+동질성 검정에서는 method 별로 모집단이 존재 (3개의 모집단)  
+이러한 모집단에서 각각 표본추출한 3개의 표본 데이터를 결합한 형태가 주어진 데이터이며,  
+survey라는 요인에 대해서 각 집단별로 동일한 성질을 보이는지 검증
+
+
