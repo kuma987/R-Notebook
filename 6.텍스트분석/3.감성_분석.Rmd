@@ -1,0 +1,97 @@
+---
+title: "감성 분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+영화 기생충 리뷰 감성 분석
+감성 분석은, 긍정어 부정어 사전을 잘 준비하는 게 가장 중요하다고 생각
+
+```{r, results='hide'}
+library(plyr)
+library(stringr)
+library(ggplot2)
+```
+
+# 데이터 불러오기
+```{r}
+# 긍정 사전, 부정 사전 출처 : 표준국어대사전 뜻풀이
+positive <- readLines('/Users/JGH/Desktop/github/R-Notebook/data/positive.txt')
+negative <- readLines('/Users/JGH/Desktop/github/R-Notebook/data/negative.txt')
+review <- readLines('/Users/JGH/Desktop/github/R-Notebook/data/parasite_review.txt')
+```
+
+# 감성 분석 수행
+```{r}
+sentimental <- function(sentences, positive, negative){
+  scores = laply(sentences,function(sentence,positive,negative){
+    sentence = gsub('[[:punct:]]','',sentence) # 문장 부호 제거
+    sentence = gsub('[[:cntrl:"]]','',sentence) # 특수 문자 제거
+    sentence = gsub('\\d+','',sentence) # 숫자 제거
+    
+    word_list <- str_split(sentence,'\\s+')
+    words = unlist(word_list)
+    
+    pos_matches = match(words,positive)
+    pos_matches = !is.na(pos_matches)
+    neg_matches = match(words,negative)
+    neg_matches = !is.na(neg_matches)
+    
+    score = sum(pos_matches) - sum(neg_matches)
+    return(score)
+  }, positive, negative)
+  scores_df <- data.frame(score=scores, text=sentences)
+  return(scores_df)
+}
+
+result <- sentimental(review, positive, negative)
+result$remark <- as.factor(ifelse(result$score > 0, '긍정',
+                                  ifelse(result$score == 0, '중립','부정')))
+head(result)
+```
+# 시각화
+
+```{r, results='hide'}
+# 나눔고딕 폰트 (맥에서 한글 깨짐 방지)
+library(showtext)
+font_add_google("Nanum Gothic","nanumgothic")
+showtext_auto()
+```
+
+```{r}
+result_table <- table(result$remark)
+result_df <- data.frame(result_table)
+colnames(result_df) <- c('반응','Freq')
+result_df$prop <- (result_df$Freq/sum(result_df$Freq))*100
+sentimental_palette <- c('긍정'='#0099FF',
+                         '부정'='#FF3333',
+                         '중립'='#99FF66')
+
+ggplot(result_df, aes(x='', y=prop, fill=반응)) +
+  geom_bar(stat='identity') +
+  theme_void() +
+  coord_polar('y', start=0) +
+  geom_text(aes(label=paste0(round(prop,1),'%')),
+            position=position_stack(vjust=0.5),
+            color='black', size=4, check_overlap = T) +
+  labs(title='감성 분석 결과') +
+  scale_fill_manual(values=sentimental_palette) +
+  theme(plot.title = element_text(hjust=0.5, vjust=-5))
+```
+

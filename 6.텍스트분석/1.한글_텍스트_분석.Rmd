@@ -1,0 +1,239 @@
+---
+title: "한글 텍스트 분석"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+해당 문서는 간단하게 수행하는 방법만 작성 (자격증 시험 기출 문제 전용) 
+실제 분석을 위해서는 더 공부한 후 옵션을 적용하는 법을 알아야 한다  
+
+
+# KoNLP 설치
+```{r, eval=FALSE}
+install.packages("multilinguer")
+library(multilinguer)
+install_jdk()
+install.packages(c("hash", "tau", "Sejong", "RSQLite", "devtools", "bit", "rex",
+                   "lazyeval", "htmlwidgets", "crosstalk", "promises", "later", 
+                   "sessioninfo", "xopen", "bit64", "blob", "DBI", "memoise", "plogr",
+                   "covr", "DT", "rcmdcheck", "rversions"), type = "binary")
+install.packages("remotes")
+remotes::install_github('haven-jeon/KoNLP', upgrade = "never", INSTALL_opts=c("--no-multiarch"))
+```
+
+# 패키지 준비
+```{r, results='hide'}
+library(tm)
+library(rJava)
+library(KoNLP)
+library(wordcloud2)
+library(plyr)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+```
+
+
+# 기존 사전 불러오기
+```{r}
+useNIADic()
+```
+
+## 사용자 지정 단어 추가하기
+```{r}
+# 사용자 지정 단어는 이렇게 외부에서 불러와도 되고, 직접 벡터 형태의 데이터로 만들어도 무관
+usr_dic <- readLines("/Users/JGH/Desktop/github/R-Notebook/data/사전.txt")
+head(usr_dic)
+# 방법 1
+mergeUserDic(data.frame(usr_dic, "ncn"))
+# 방법 2 (저 NIADic이 명확한 지 모르겠음)
+buildDictionary(ext_dic = "NIADic", # 기존 사전
+                user_dic=data.frame(usr_dic,"ncn"), # 새 단어
+                replace_usr_dic = T)
+```
+
+# 텍스트 불러오기
+```{r}
+blog <- read.csv("/Users/JGH/Desktop/github/R-Notebook/data/blog_review.txt",sep="\t")
+raw_txt <- blog$Content
+head(raw_txt)
+```
+
+# 텍스트 단위로 수행
+아직 옵션을 잘 모름
+
+## 텍스트 전처리
+```{r}
+clean_txt <- function(txt){
+  txt <- tolower(txt) # 소문자 처리
+  txt <- removePunctuation(txt) # 구두점 제거
+  txt <- removeNumbers(txt) # 숫자 제거
+  txt <- stripWhitespace(txt) # 공백 제거
+  return(txt)
+}
+pro_txt <- clean_txt(raw_txt)
+head(pro_txt)
+```
+
+## extractNoun을 이용한 명사 추출
+```{r}
+noun_exN <- sapply(pro_txt,extractNoun)
+wordcount <- table(unlist(noun_exN))
+wordcount <- as.data.frame(wordcount,stringsAsFactors=F)
+colnames(wordcount) <- c('word','freq')
+wordcount <- wordcount %>% arrange(desc(freq))
+wordcount <- wordcount[which(nchar(wordcount$word) >= 2),]
+head(wordcount)
+```
+```{r}
+# 번외 : 다른 품사 추출하는 법
+# 품사를 의미하는 태그는 데이터셋에 'KAIST_품사_태그' 참고
+# 두글자 이상의 태그는 SimplePos22를 활용해야 작동
+doc <- as.character(pro_txt)
+pos <- paste(SimplePos09(doc))
+extracted <- str_match(pos,'([가-힣]+)/[P]')
+keyword <- extracted[,2]
+word <- keyword[!is.na(keyword)]
+word <- table(word)
+key_count <- as.data.frame(word,stringsAsFactors=F)
+colnames(key_count) <- c('word','freq')
+key_count <- key_count %>% arrange(desc(freq))
+key_count <- key_count[which(nchar(key_count$word) >= 2),]
+head(key_count)
+```
+## 시각화
+
+```{r, results='hide'}
+# 나눔고딕 폰트 (맥에서 한글 깨짐 방지)
+library(showtext)
+font_add_google("Nanum Gothic","nanumgothic")
+showtext_auto()
+```
+
+
+```{r}
+# 빈도수 막대 시각화
+ggplot(wordcount[1:10,]) + geom_bar(stat='identity',
+                                    aes(x=reorder(word,-freq), y=freq, fill=word)) +
+       ggtitle('상위 10개 단어 빈도') + labs(x='단어', y='빈도') +
+       theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# 빈도수 파이 차트
+ggplot(wordcount[1:10,], aes(x='', y=freq, fill=word)) +
+  geom_bar(stat='identity') +
+  theme_void() +
+  coord_polar('y', start=10) +
+  geom_text(aes(label = word),
+            position = position_stack(vjust=0.5),
+            color = 'black', size=3, check_overlap = T) +
+  labs(title = '상위 10개 단어 파이 차트') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# 워드 클라우드
+wordcloud2(wordcount, fontFamily='나눔바른고딕', size=0.8)
+```
+
+
+
+# TDM 형식으로 수행
+옵션을 잘만 건들이면 괜찮은 결과가 나옴  
+옵션을 잘 몰라서 그렇지
+
+
+## TDM 생성
+```{r}
+raw_corp <- VCorpus(VectorSource(raw_txt))
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, content_transformer(tolower)) # 소문자 처리
+  corpus <- tm_map(corpus, removeWords, stopwords()) # 불용어 제거
+  corpus <- tm_map(corpus, removePunctuation) # 구두점 제거
+  corpus <- tm_map(corpus, removeNumbers) # 숫자 제거
+  corpus <- tm_map(corpus, stripWhitespace) # 공백 제거
+  corpus <- tm_map(corpus, content_transformer(PlainTextDocument)) # 충돌 방지
+  return(corpus)
+}
+
+pro_corp <- clean_corpus(raw_corp)
+# control 아래 다양한 옵션을 추가할 수 있음
+# 옵션에 따라 단어-빈도 행렬 뿐 아니라, TF-IDF도 추출 가능
+# 정리하다 알았는데, 기존 NIADic에 있는 단어는 어떻게 보는지 모르겠다
+# 따로 다운받아서 추가하거나 하면 어느 정도 해결될 듯 
+tdm <- TermDocumentMatrix(pro_corp,
+                          control = list(dictionary = usr_dic, # usr_dic에 지정된 단어만 사용
+                                         wordLenght=c(4,16))) # 2~8 글자 단어만 사용
+```
+
+## 단어-빈도 차트 생성
+```{r}
+df <- as.data.frame(as.matrix(tdm))
+v <- sort(rowSums(df), decreasing=T)
+wordcount <- data.frame(word=names(v), freq=v)
+head(wordcount)
+```
+## 시각화
+
+```{r, results='hide'}
+# 나눔고딕 폰트 (맥에서 한글 깨짐 방지)
+library(showtext)
+font_add_google("Nanum Gothic","nanumgothic")
+showtext_auto()
+```
+
+
+```{r}
+# 빈도수 막대 시각화
+ggplot(wordcount[1:10,]) + geom_bar(stat='identity',
+                                    aes(x=reorder(word,-freq), y=freq, fill=word)) +
+       ggtitle('상위 10개 단어 빈도') + labs(x='단어', y='빈도') +
+       theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# 빈도수 파이 차트
+ggplot(wordcount[1:10,], aes(x='', y=freq, fill=word)) +
+  geom_bar(stat='identity') +
+  theme_void() +
+  coord_polar('y', start=10) +
+  geom_text(aes(label = word),
+            position = position_stack(vjust=0.5),
+            color = 'black', size=3, check_overlap = T) +
+  labs(title = '상위 10개 단어 파이 차트') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# 워드 클라우드
+# 아마 RMD에서 wordcloud2 두 번 시각화가 되지 않아서 화면 안 나올 듯
+wordcloud2(wordcount, fontFamily='나눔바른고딕', size=0.8)
+```
+
+## 번외 : 단어끼리 같은 문장에 등장한 횟수
+```{r}
+m <- as.matrix(tdm)
+adjmat <- m %*% t(m)
+adjmat[1:6,1:6]
+diag(adjmat) = 0
+```
+
+
