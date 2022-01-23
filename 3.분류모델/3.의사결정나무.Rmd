@@ -1,0 +1,122 @@
+---
+title: "의사결정나무"
+author: 'kuma987'
+date: "`r format(Sys.time(), '%Y년 %B %d일')`"
+output:
+  html_document: 
+    fig_height: 6
+    fig_width: 10
+    highlight: textmate
+    toc: yes
+    toc_float: yes
+  word_document:
+    highlight: tango
+    reference_docx: korean-template.docx
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 사용 데이터
+```{r, results='hide'}
+library(mlbench)
+library(caret)
+library(dplyr)
+```
+
+```{r}
+#bin은 범주형 변수를 0과 1로 표시한 경우
+data("PimaIndiansDiabetes2")
+pima <- PimaIndiansDiabetes2
+pima <- pima[complete.cases(pima),]
+pima_scale <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima$diabetes)
+pima_bin <- pima
+pima_bin$diabetes <- as.factor(ifelse(pima_bin$diabetes=='pos',1,0))
+pima_scale_bin <- cbind(as.data.frame(apply(select_if(pima,is.numeric), 2, scale)), diabetes = pima_bin$diabetes)
+head(pima_scale_bin)
+folds <- createFolds(pima$diabetes, k=10)
+idx_tr <- unname(unlist(folds[1:5]))
+idx_vd <- unname(unlist(folds[6:8]))
+idx_ts <- unname(unlist(folds[9:10]))
+train <- pima[idx_tr,]
+valid <- pima[idx_vd,]
+test <- pima[idx_ts,]
+train_bin <- pima_bin[idx_tr,]
+valid_bin <- pima_bin[idx_vd,]
+test_bin <- pima_bin[idx_ts,]
+train_scale <- pima_scale[idx_tr,]
+valid_scale <- pima_scale[idx_vd,]
+test_scale <- pima_scale[idx_ts,]
+train_scale_bin <- pima_scale_bin[idx_tr,]
+valid_scale_bin <- pima_scale_bin[idx_vd,]
+test_scale_bin <- pima_scale_bin[idx_ts,]
+```
+
+# CART
+```{r, results='hide'}
+library(rpart)
+library(rpart.plot)
+```
+
+## 모델링
+```{r}
+model <- rpart(diabetes~., data=train)
+model # node) 분리기준, 총 개체 수, y로 예측하지 않은 개체 수, y로 예측한 개체수 (y의 실제 비율)
+prp(model, type=2, extra=2, digits=3)
+model$cptable #교차 타당성 오차 확인 (cp가 가장 적게 해주는 분할 수가 좋음)
+plotcp(model) #교차 타당성 시각적 확인
+```
+
+## 예측 모델 생성
+```{r}
+pred_prob <- predict(model, newdata=test)[,2] #이진분류라서 인덱스를 통해 두 번째 클래스에 속할 확률로 지정
+pred_class <- predict(model, newdata=test, type='class')
+```
+
+# C5.0
+```{r, results='hide'}
+library(C50)
+```
+
+## 모델링
+```{r}
+#costs 인자로 오차 가중치 행렬을 지정할 수 있음. 오차 가중치가 높다 = 발생 확률을 낮춤
+
+#costs 행렬 구조 : c(TP, FP,
+#                    FN, TN)
+model <- C5.0(train[,!names(train) %in% 'diabetes'], train$diabetes, trials=10)
+summary(model)
+plot(model)
+```
+
+## 예측 모델 생성
+```{r}
+pred_prob <- predict(model, test, type='prob')[,2] #이진분류라서 인덱스를 통해 두 번째 클래스에 속할 확률로 지정
+pred_class <- predict(model, newdata=test, type='class')
+```
+
+# 모델 평가
+```{r, results='hide'}
+library(ROCR)
+```
+
+## 이진분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes, positive='pos')
+precision <- posPredValue(pred_class, test$diabetes, positive='pos')
+recall <- sensitivity(pred_class, test$diabetes, positive='pos')
+F1_score <- (2*precision*recall)/(precision+recall)
+roc_curve <- prediction(pred_prob, test$diabetes)
+plot(performance(roc_curve,'tpr','fpr'))
+abline(a=0, b=1,lty=2, col='black')
+performance(roc_curve,'auc')@y.values # auc 값
+```
+
+## 다지분류의 경우
+```{r}
+caret::confusionMatrix(pred_class, test$diabetes)
+```
